@@ -8,6 +8,7 @@
 #include "Eigen-3.3/Eigen/QR"
 #include "MPC.h"
 #include "json.hpp"
+#include <cppad/cppad.hpp>
 
 // for convenience
 using json = nlohmann::json;
@@ -65,6 +66,17 @@ Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
   return result;
 }
 
+Eigen::MatrixXd transform_points(vector<double> ptsx,
+                                 vector<double> ptsy,
+                                 vector<double> state) {
+  Eigen::MatrixXd t_pts(ptsx.size(), 2);
+  for (int i = 0; i < ptsx.size(); i++) {
+    t_pts(i, 0) = (ptsx[i] - state[0]) * CppAD::cos(state[2]) + (ptsy[i] - state[1]) * CppAD::sin(state[2]);
+    t_pts(i, 1) = -(ptsx[i] - state[0]) * CppAD::sin(state[2]) + (ptsy[i] - state[1]) * CppAD::cos(state[2]);
+  }
+  return t_pts;
+}
+
 int main() {
   uWS::Hub h;
 
@@ -91,34 +103,36 @@ int main() {
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
+          Eigen::MatrixXd transformed = transform_points(ptsx, ptsy, {px, py, psi});
+          Eigen::VectorXd coeffs = polyfit(transformed.col(0), transformed.col(1), 3);
+          double cte = polyeval(coeffs, 0);
+          double epsi = -CppAD::atan(coeffs[1]);
 
-          /*
-          * TODO: Calculate steeering angle and throttle using MPC.
-          *
-          * Both are in between [-1, 1].
-          *
-          */
-          double steer_value;
-          double throttle_value;
+          Eigen::VectorXd state(6);
+          state << 0, 0, 0, v, cte, epsi;
+
+          auto values = mpc.Solve(state, coeffs);
+
+          const double steer_value = rad2deg(values[0]) / 25;
+          const double throttle_value = values[1];
 
           json msgJson;
           msgJson["steering_angle"] = steer_value;
           msgJson["throttle"] = throttle_value;
 
-          //Display the MPC predicted trajectory 
-          vector<double> mpc_x_vals;
-          vector<double> mpc_y_vals;
+          //Display the MPC predicted trajectory
+          vector<double> mpc_x_vals = mpc.x_vals;
+          vector<double> mpc_y_vals = mpc.y_vals;
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Green line
-
           msgJson["mpc_x"] = mpc_x_vals;
           msgJson["mpc_y"] = mpc_y_vals;
 
           //Display the waypoints/reference line
-          vector<double> next_x_vals;
-          vector<double> next_y_vals;
-
+          // https://stackoverflow.com/questions/26094379/typecasting-eigenvectorxd-to-stdvector
+          vector<double> next_x_vals(transformed.col(0).data(), transformed.col(0).data() + transformed.col(0).size());
+          vector<double> next_y_vals(transformed.col(1).data(), transformed.col(1).data() + transformed.col(1).size());
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line
 
