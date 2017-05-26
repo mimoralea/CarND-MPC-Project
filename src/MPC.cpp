@@ -7,7 +7,7 @@
 using CppAD::AD;
 
 // Set the timestep length and duration
-size_t N = 25;
+size_t N = 15;
 double dt = 0.1;
 
 // This value assumes the model presented in the classroom is used.
@@ -22,13 +22,12 @@ double dt = 0.1;
 // This is the length from front to CoG that has a similar radius.
 const double Lf = 2.67;
 
-// from Udacity Quizzes
+// reference error values
 double ref_cte = 0;
 double ref_epsi = 0;
 
-// NOTE: feel free to play around with this
-// or do something completely different
-double ref_v = 40;
+// reference velocity
+double ref_v = 80;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -58,21 +57,21 @@ class FG_eval {
 
     // The part of the cost based on the reference state.
     for (int i = 0; i < N; i++) {
-      fg[0] += CppAD::pow(vars[cte_start + i] - ref_cte, 2);
-      fg[0] += CppAD::pow(vars[epsi_start + i] - ref_epsi, 2);
+      fg[0] += 1000*CppAD::pow(vars[cte_start + i] - ref_cte, 2);
+      fg[0] += 1000*CppAD::pow(vars[epsi_start + i] - ref_epsi, 2);
       fg[0] += CppAD::pow(vars[v_start + i] - ref_v, 2);
     }
 
     // Minimize the use of actuators.
     for (int i = 0; i < N - 1; i++) {
-      fg[0] += CppAD::pow(vars[delta_start + i], 2);
-      fg[0] += CppAD::pow(vars[a_start + i], 2);
+      fg[0] += 5*CppAD::pow(vars[delta_start + i], 2);
+      fg[0] += 2*CppAD::pow(vars[a_start + i], 2);
     }
 
     // Minimize the value gap between sequential actuations.
     for (int i = 0; i < N - 2; i++) {
-      fg[0] += 100 * CppAD::pow(vars[delta_start + i + 1] - vars[delta_start + i], 2);
-      fg[0] += CppAD::pow(vars[a_start + i + 1] - vars[a_start + i], 2);
+      fg[0] += 100*CppAD::pow(vars[delta_start + i + 1] - vars[delta_start + i], 2);
+      fg[0] += 5*CppAD::pow(vars[a_start + i + 1] - vars[a_start + i], 2);
     }
 
     // Initial constraints
@@ -109,8 +108,10 @@ class FG_eval {
       AD<double> delta0 = vars[delta_start + i];
       AD<double> a0 = vars[a_start + i];
 
-      AD<double> f0 = coeffs[0] + coeffs[1] * x0;
-      AD<double> psides0 = CppAD::atan(coeffs[1]);
+      AD<double> f0 = coeffs[0] + coeffs[1] * x0 + coeffs[2] * CppAD::pow(x0, 2) + coeffs[3] * CppAD::pow(x0, 3);
+      AD<double> psides0 = CppAD::atan(3 * coeffs[3] * CppAD::pow(x0, 2) + 2 * coeffs[2] * x0 + coeffs[1]);
+      // AD<double> f0 = coeffs[0] + coeffs[1] * x0;
+      // AD<double> psides0 = CppAD::atan(coeffs[1]);
 
       // Here's `x` to get you started.
       // The idea here is to constraint this value to be 0.
@@ -155,7 +156,7 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
   // N timesteps == N - 1 actuations
   size_t n_vars = x0.size() * N + 2 * (N - 1);
   // Number of constraints
-  size_t n_constraints = N * 6;
+  size_t n_constraints = N * x0.size();
 
   // Initial value of the independent variables.
   // Should be 0 except for the initial values.
@@ -186,15 +187,15 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
   // degrees (values in radians).
   // Feel free to change this to something else.
   for (int i = delta_start; i < a_start; i++) {
-    vars_lowerbound[i] = -0.436332;
-    vars_upperbound[i] = 0.436332;
+    vars_lowerbound[i] = -1.;
+    vars_upperbound[i] = 1.;
   }
 
   // Acceleration/decceleration upper and lower limits.
   // Feel free to change this to something else.
   for (int i = a_start; i < n_vars; i++) {
-    vars_lowerbound[i] = -1.0;
-    vars_upperbound[i] = 1.0;
+    vars_lowerbound[i] = -1.;
+    vars_upperbound[i] = .5;
   }
 
   // Lower and upper limits for constraints

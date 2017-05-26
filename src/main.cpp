@@ -71,8 +71,11 @@ Eigen::MatrixXd transform_points(vector<double> ptsx,
                                  vector<double> state) {
   Eigen::MatrixXd t_pts(ptsx.size(), 2);
   for (int i = 0; i < ptsx.size(); i++) {
-    t_pts(i, 0) = (ptsx[i] - state[0]) * CppAD::cos(state[2]) + (ptsy[i] - state[1]) * CppAD::sin(state[2]);
-    t_pts(i, 1) = -(ptsx[i] - state[0]) * CppAD::sin(state[2]) + (ptsy[i] - state[1]) * CppAD::cos(state[2]);
+    auto diff_x = ptsx[i] - state[0];
+    auto diff_y = ptsy[i] - state[1];
+    auto psi = 0-state[2];
+    t_pts(i, 0) = diff_x * CppAD::cos(psi) - diff_y * CppAD::sin(psi);
+    t_pts(i, 1) = diff_x * CppAD::sin(psi) + diff_y * CppAD::cos(psi);
   }
   return t_pts;
 }
@@ -119,23 +122,17 @@ int main() {
           state << 0, 0, 0, v, cte, epsi;
 
           auto values = mpc.Solve(state, coeffs);
-
-          // normalize the steer value
-          const double steer_value = rad2deg(values[0]) / 25;
-          const double throttle_value = values[1];
+          auto steer_value = values[0];
+          auto throttle_value = values[1];
 
           json msgJson;
           msgJson["steering_angle"] = steer_value;
           msgJson["throttle"] = throttle_value;
 
-          //Display the MPC predicted trajectory
-          vector<double> mpc_x_vals = mpc.x_vals;
-          vector<double> mpc_y_vals = mpc.y_vals;
-
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Green line
-          msgJson["mpc_x"] = mpc_x_vals;
-          msgJson["mpc_y"] = mpc_y_vals;
+          msgJson["mpc_x"] = mpc.x_vals;
+          msgJson["mpc_y"] = mpc.y_vals;
 
           //Display the waypoints/reference line
           // https://stackoverflow.com/questions/26094379/typecasting-eigenvectorxd-to-stdvector
@@ -157,7 +154,7 @@ int main() {
           // Feel free to play around with this value but should be to drive
           // around the track with 100ms latency.
           //
-          // NOTE: REMEMBER TO SET THIS TO 100 MILLISECONDS BEFORE
+          // REMEMBER TO SET THIS TO 100 MILLISECONDS BEFORE
           // SUBMITTING.
           this_thread::sleep_for(chrono::milliseconds(100));
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
