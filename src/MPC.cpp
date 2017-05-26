@@ -139,57 +139,95 @@ class FG_eval {
 MPC::MPC() {}
 MPC::~MPC() {}
 
-vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
-  bool ok = true;
+vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
   size_t i;
   typedef CPPAD_TESTVECTOR(double) Dvector;
 
-  // Set the number of model variables (includes both states and inputs).
-  // For example: If the state is a 4 element vector, the actuators is a 2
-  // element vector and there are 10 timesteps. The number of variables is:
-  //
-  // 4 * 10 + 2 * 9
-  size_t n_vars = 0;
-  // TODO: Set the number of constraints
-  size_t n_constraints = 0;
+  double x = x0[0];
+  double y = x0[1];
+  double psi = x0[2];
+  double v = x0[3];
+  double cte = x0[4];
+  double epsi = x0[5];
+
+  // number of independent variables
+  // N timesteps == N - 1 actuations
+  size_t n_vars = N * 6 + (N - 1) * 2;
+  // Number of constraints
+  size_t n_constraints = N * 6;
 
   // Initial value of the independent variables.
-  // SHOULD BE 0 besides initial state.
+  // Should be 0 except for the initial values.
   Dvector vars(n_vars);
   for (int i = 0; i < n_vars; i++) {
-    vars[i] = 0;
+    vars[i] = 0.0;
   }
+  // Set the initial variable values
+  vars[x_start] = x;
+  vars[y_start] = y;
+  vars[psi_start] = psi;
+  vars[v_start] = v;
+  vars[cte_start] = cte;
+  vars[epsi_start] = epsi;
 
+  // Lower and upper limits for x
   Dvector vars_lowerbound(n_vars);
   Dvector vars_upperbound(n_vars);
-  // TODO: Set lower and upper limits for variables.
 
-  // Lower and upper limits for the constraints
-  // Should be 0 besides initial state.
+  // Set all non-actuators upper and lowerlimits
+  // to the max negative and positive values.
+  for (int i = 0; i < delta_start; i++) {
+    vars_lowerbound[i] = -1.0e19;
+    vars_upperbound[i] = 1.0e19;
+  }
+
+  // The upper and lower limits of delta are set to -25 and 25
+  // degrees (values in radians).
+  // NOTE: Feel free to change this to something else.
+  for (int i = delta_start; i < a_start; i++) {
+    vars_lowerbound[i] = -0.436332;
+    vars_upperbound[i] = 0.436332;
+  }
+
+  // Acceleration/decceleration upper and lower limits.
+  // NOTE: Feel free to change this to something else.
+  for (int i = a_start; i < n_vars; i++) {
+    vars_lowerbound[i] = -1.0;
+    vars_upperbound[i] = 1.0;
+  }
+
+  // Lower and upper limits for constraints
+  // All of these should be 0 except the initial
+  // state indices.
   Dvector constraints_lowerbound(n_constraints);
   Dvector constraints_upperbound(n_constraints);
   for (int i = 0; i < n_constraints; i++) {
     constraints_lowerbound[i] = 0;
     constraints_upperbound[i] = 0;
   }
+  constraints_lowerbound[x_start] = x;
+  constraints_lowerbound[y_start] = y;
+  constraints_lowerbound[psi_start] = psi;
+  constraints_lowerbound[v_start] = v;
+  constraints_lowerbound[cte_start] = cte;
+  constraints_lowerbound[epsi_start] = epsi;
 
-  // object that computes objective and constraints
+  constraints_upperbound[x_start] = x;
+  constraints_upperbound[y_start] = y;
+  constraints_upperbound[psi_start] = psi;
+  constraints_upperbound[v_start] = v;
+  constraints_upperbound[cte_start] = cte;
+  constraints_upperbound[epsi_start] = epsi;
+
+  // Object that computes objective and constraints
   FG_eval fg_eval(coeffs);
 
-  // options for IPOPT solver
+  // options
   std::string options;
-  // Uncomment this if you'd like more print information
   options += "Integer print_level  0\n";
-  // Setting sparse to true allows the solver to take advantage
-  // of sparse routines, this makes the computation MUCH FASTER. If you
-  // can uncomment 1 of these and see if it makes a difference or not but
-  // if you uncomment both the computation time should go up in orders of
-  // magnitude.
   options += "Sparse  true        forward\n";
   options += "Sparse  true        reverse\n";
-  // Currently the solver has a maximum time limit of 0.5 seconds.
-  // Change this as you see fit.
-  options += "Numeric max_cpu_time          0.5\n";
+  options += "Numeric max_cpu_time          0.05\n";
 
   // place to return solution
   CppAD::ipopt::solve_result<Dvector> solution;
@@ -199,19 +237,125 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
       options, vars, vars_lowerbound, vars_upperbound, constraints_lowerbound,
       constraints_upperbound, fg_eval, solution);
 
+  //
   // Check some of the solution values
+  //
+  bool ok = true;
   ok &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
 
-  // Cost
   auto cost = solution.obj_value;
   std::cout << "Cost " << cost << std::endl;
+  return {solution.x[x_start + 1],   solution.x[y_start + 1],
+          solution.x[psi_start + 1], solution.x[v_start + 1],
+          solution.x[cte_start + 1], solution.x[epsi_start + 1],
+          solution.x[delta_start],   solution.x[a_start]};
+}
 
-  // Return the first actuator values. The variables can be accessed with
-  // `solution.x[i]`.
-  //
-  // {...} is shorthand for creating a vector, so auto x1 = {1.0,2.0}
-  // creates a 2 element double vector.
-  x_vals = {1.,2.,3.,4.,5.};
-  y_vals = {1.,2.,3.,4.,5.};
-  return {1.0, 2.0};
+//
+// Helper functions to fit and evaluate polynomials.
+//
+
+// Evaluate a polynomial.
+double polyeval(Eigen::VectorXd coeffs, double x) {
+  double result = 0.0;
+  for (int i = 0; i < coeffs.size(); i++) {
+    result += coeffs[i] * pow(x, i);
+  }
+  return result;
+}
+
+// Fit a polynomial.
+// Adapted from
+// https://github.com/JuliaMath/Polynomials.jl/blob/master/src/Polynomials.jl#L676-L716
+Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
+                        int order) {
+  assert(xvals.size() == yvals.size());
+  assert(order >= 1 && order <= xvals.size() - 1);
+  Eigen::MatrixXd A(xvals.size(), order + 1);
+
+  for (int i = 0; i < xvals.size(); i++) {
+    A(i, 0) = 1.0;
+  }
+
+  for (int j = 0; j < xvals.size(); j++) {
+    for (int i = 0; i < order; i++) {
+      A(j, i + 1) = A(j, i) * xvals(j);
+    }
+  }
+
+  auto Q = A.householderQr();
+  auto result = Q.solve(yvals);
+  return result;
+}
+
+int main() {
+  MPC mpc;
+  int iters = 50;
+
+  Eigen::VectorXd ptsx(2);
+  Eigen::VectorXd ptsy(2);
+  ptsx << -100, 100;
+  ptsy << -1, -1;
+
+  // The polynomial is fitted to a straight line so a polynomial with
+  // order 1 is sufficient.
+  auto coeffs = polyfit(ptsx, ptsy, 1);
+
+  // NOTE: free feel to play around with these
+  double x = -1;
+  double y = 10;
+  double psi = 0;
+  double v = 10;
+  // The cross track error is calculated by evaluating at polynomial at x, f(x)
+  // and subtracting y.
+  double cte = polyeval(coeffs, 0) - y;
+  // Due to the sign starting at 0, the orientation error is -f'(x).
+  // derivative of coeffs[0] + coeffs[1] * x -> coeffs[1]
+  double epsi = -atan(coeffs[1]);
+
+  Eigen::VectorXd state(6);
+  state << x, y, psi, v, cte, epsi;
+
+  std::vector<double> x_vals = {state[0]};
+  std::vector<double> y_vals = {state[1]};
+  std::vector<double> psi_vals = {state[2]};
+  std::vector<double> v_vals = {state[3]};
+  std::vector<double> cte_vals = {state[4]};
+  std::vector<double> epsi_vals = {state[5]};
+  std::vector<double> delta_vals = {};
+  std::vector<double> a_vals = {};
+
+  for (size_t i = 0; i < iters; i++) {
+    std::cout << "Iteration " << i << std::endl;
+
+    auto vars = mpc.Solve(state, coeffs);
+
+    x_vals.push_back(vars[0]);
+    y_vals.push_back(vars[1]);
+    psi_vals.push_back(vars[2]);
+    v_vals.push_back(vars[3]);
+    cte_vals.push_back(vars[4]);
+    epsi_vals.push_back(vars[5]);
+
+    delta_vals.push_back(vars[6]);
+    a_vals.push_back(vars[7]);
+
+    state << vars[0], vars[1], vars[2], vars[3], vars[4], vars[5];
+    std::cout << state << std::endl;
+  }
+
+  // Plot values
+  // NOTE: feel free to play around with this.
+  // It's useful for debugging!
+  plt::subplot(3, 1, 1);
+  plt::title("CTE");
+  plt::plot(cte_vals);
+  plt::subplot(3, 1, 2);
+  plt::title("Delta (Radians)");
+  plt::plot(delta_vals);
+  plt::subplot(3, 1, 3);
+  plt::title("Velocity");
+  plt::plot(v_vals);
+
+  plt::show();
 }
