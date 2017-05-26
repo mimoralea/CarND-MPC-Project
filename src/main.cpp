@@ -103,16 +103,24 @@ int main() {
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
+
+          // transform input to car-centered points
           Eigen::MatrixXd transformed = transform_points(ptsx, ptsy, {px, py, psi});
           Eigen::VectorXd coeffs = polyfit(transformed.col(0), transformed.col(1), 3);
+
+          // car is a 0 x and y on the transformed points coordinate
           double cte = polyeval(coeffs, 0);
+
+          // the derivative is actually coeffs[1], the - is due to the orientation perspective
           double epsi = -CppAD::atan(coeffs[1]);
 
+          // setup the state
           Eigen::VectorXd state(6);
           state << 0, 0, 0, v, cte, epsi;
 
           auto values = mpc.Solve(state, coeffs);
 
+          // normalize the steer value
           const double steer_value = rad2deg(values[0]) / 25;
           const double throttle_value = values[1];
 
