@@ -260,5 +260,5 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
   //        solution.x[psi_start + 1], solution.x[v_start + 1],
   //        solution.x[cte_start + 1], solution.x[epsi_start + 1],
   //        solution.x[delta_start],   solution.x[a_start]};
-  return {solution.x[delta_start], solution.x[a_start]};
+  return {-solution.x[delta_start], solution.x[a_start]};
 }
