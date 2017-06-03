@@ -111,23 +111,27 @@ int main() {
           Eigen::MatrixXd transformed = transform_points(ptsx, ptsy, {px, py, psi});
           Eigen::VectorXd coeffs = polyfit(transformed.col(0), transformed.col(1), 3);
 
-          // car is a 0 x and y on the transformed points coordinate
-          double cte = polyeval(coeffs, 0);
+          px = .1 * v * CppAD::cos(psi);
+          py = .1 * v * CppAD::sin(psi);
 
-          // the derivative is actually coeffs[1], the - is due to the orientation perspective
-          double epsi = -CppAD::atan(coeffs[1]);
+          // car is a 0 x and y on the transformed points coordinate
+          double cte = polyeval(coeffs, px);
+
+          // the derivative due to the orientation perspective
+          double epsi = -CppAD::atan(coeffs[1] + 2 * coeffs[2] * px);
 
           // setup the state
           Eigen::VectorXd state(6);
           state << 0, 0, 0, v, cte, epsi;
 
           auto values = mpc.Solve(state, coeffs);
-          auto steer_value = values[0];
+
+          // Remember to divide by deg2rad(25) before you send the steering value back.
+          // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
+          auto steer_value = values[0];// /deg2rad(25);
           auto throttle_value = values[1];
 
           json msgJson;
-          // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
-          // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
           msgJson["steering_angle"] = steer_value;
           msgJson["throttle"] = throttle_value;
 
