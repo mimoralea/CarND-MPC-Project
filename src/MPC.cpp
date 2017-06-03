@@ -250,9 +250,9 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
 
   // std::vector<double> x_vals(N, 0.0);
   // std::vector<double> y_vals(N, 0.0);
-  x_vals.resize(N);
-  y_vals.resize(N);
-  for (int i = 0; i < N; i++) {
+  x_vals.resize(N - 5);
+  y_vals.resize(N - 5);
+  for (int i = 0; i < x_vals.size(); i++) {
     x_vals[i] = solution.x[x_start + i];
     y_vals[i] = solution.x[y_start + i];
   }
