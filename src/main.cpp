@@ -116,19 +116,21 @@ int main() {
 
           // car is a 0 x and y on the transformed points coordinate
           double cte = polyeval(coeffs, px);
+          //double cte = polyeval(coeffs, 0);
 
           // the derivative due to the orientation perspective
           double epsi = -CppAD::atan(coeffs[1] + 2 * coeffs[2] * px);
+          //double epsi = -CppAD::atan(coeffs[1]);
 
           // setup the state
           Eigen::VectorXd state(6);
-          state << 0, 0, 0, v, cte, epsi;
+          state <<  v * 0.44704 * 0.1, 0, 0, v, cte, epsi;
 
           auto values = mpc.Solve(state, coeffs);
 
           // Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
-          auto steer_value = values[0];// /deg2rad(25);
+          auto steer_value = values[0] / deg2rad(25);
           auto throttle_value = values[1];
 
           json msgJson;
