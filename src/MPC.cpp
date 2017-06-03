@@ -7,7 +7,7 @@
 using CppAD::AD;
 
 // Set the timestep length and duration
-size_t N = 10;
+size_t N = 15;
 double dt = 0.1;
 
 // This value assumes the model presented in the classroom is used.
@@ -27,7 +27,7 @@ double ref_cte = 0;
 double ref_epsi = 0;
 
 // reference velocity
-double ref_v = 60;
+double ref_v = 45 * 0.44704;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -57,8 +57,8 @@ class FG_eval {
 
     // The part of the cost based on the reference state.
     for (int i = 0; i < N; i++) {
-      fg[0] += 0.08*CppAD::pow(vars[cte_start + i] - ref_cte, 2);
-      fg[0] += 80*CppAD::pow(vars[epsi_start + i] - ref_epsi, 2);
+      fg[0] += 0.11*CppAD::pow(vars[cte_start + i] - ref_cte, 2);
+      fg[0] += 90*CppAD::pow(vars[epsi_start + i] - ref_epsi, 2);
       fg[0] += 0.8*CppAD::pow(vars[v_start + i] - ref_v, 2);
     }
 
@@ -70,8 +70,8 @@ class FG_eval {
 
     // Minimize the value gap between sequential actuations.
     for (int i = 0; i < N - 2; i++) {
-      fg[0] += 1800*CppAD::pow(vars[delta_start + i + 1] - vars[delta_start + i], 2);
-      fg[0] += 80*CppAD::pow(vars[a_start + i + 1] - vars[a_start + i], 2);
+      fg[0] += 1000*CppAD::pow(vars[delta_start + i + 1] - vars[delta_start + i], 2);
+      fg[0] += CppAD::pow(vars[a_start + i + 1] - vars[a_start + i], 2);
     }
 
     // Initial constraints
@@ -138,7 +138,7 @@ class FG_eval {
 //
 // MPC class definition implementation.
 //
-MPC::MPC() {}
+MPC::MPC() { last_steering = 0; }
 MPC::~MPC() {}
 
 vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
@@ -250,8 +250,8 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
 
   // std::vector<double> x_vals(N, 0.0);
   // std::vector<double> y_vals(N, 0.0);
-  x_vals.resize(N);
-  y_vals.resize(N);
+  x_vals.resize(N - 1);
+  y_vals.resize(N - 1);
   for (int i = 1; i < x_vals.size(); i++) {
     x_vals[i] = solution.x[x_start + i];
     y_vals[i] = solution.x[y_start + i];
@@ -261,5 +261,6 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
   //        solution.x[psi_start + 1], solution.x[v_start + 1],
   //        solution.x[cte_start + 1], solution.x[epsi_start + 1],
   //        solution.x[delta_start],   solution.x[a_start]};
-  return {-solution.x[delta_start], solution.x[a_start]};
+  last_steering = solution.x[delta_start];
+  return {-last_steering, solution.x[a_start]};
 }

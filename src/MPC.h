@@ -18,6 +18,7 @@ class MPC {
 
   vector<double> x_vals;
   vector<double> y_vals;
+  double last_steering;
 };
 
 #endif /* MPC_H */

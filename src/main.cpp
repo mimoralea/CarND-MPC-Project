@@ -111,23 +111,21 @@ int main() {
           Eigen::MatrixXd transformed = transform_points(ptsx, ptsy, {px, py, psi});
           Eigen::VectorXd coeffs = polyfit(transformed.col(0), transformed.col(1), 3);
 
-          px = .1 * v * CppAD::cos(psi);
-          py = .1 * v * CppAD::sin(psi);
-
           // car is a 0 x and y on the transformed points coordinate
-          double cte = polyeval(coeffs, px);
-          //double cte = polyeval(coeffs, 0);
+          double cte = polyeval(coeffs, 0);
 
           // the derivative due to the orientation perspective
-          double epsi = -CppAD::atan(coeffs[1] + 2 * coeffs[2] * px);
-          //double epsi = -CppAD::atan(coeffs[1]);
+          double epsi = -CppAD::atan(coeffs[1]);
 
           // setup the state
           Eigen::VectorXd state(6);
-          state <<  v * 0.44704 * 0.1, 0, 0, v, cte, epsi;
+          state <<  v * 0.44704 * 0.1 * CppAD::cos(mpc.last_steering),
+            v * 0.44704 * 0.1 * CppAD::sin(mpc.last_steering),
+            0,
+            v * 0.44704, cte, epsi;
 
           auto values = mpc.Solve(state, coeffs);
-
+ 
           // Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
           auto steer_value = values[0] / deg2rad(25);
